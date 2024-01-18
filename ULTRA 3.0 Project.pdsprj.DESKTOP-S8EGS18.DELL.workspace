@@ -1,31 +1,193 @@
-<?xml version='1.0' encoding='UTF-8' standalone='yes'?>
-<WORKSPACE>
- <FRAME activewindow="1">
-  <PLACEMENT>2c00000002000000030000000083ffff0083ffffffffffffffffffffb90000000c000000c7060000f0030000</PLACEMENT>
-  <WINDOW type="default" module="ISIS">
-   <editor metric="0" gridmajor="2540000" mode="00000000" zoom="0" scale="118" flipped="0" gridminor="254000" gridmode="32" snapidx="2" snap="254000" xcursor="0" orgmode="0" snaprange="127000">
-    <world y1="-8890000" x1="-12700000" y2="8890000" x2="12700000"/>
-    <centre x="0" y="0"/>
-    <origin x="0" y="0"/>
-   </editor>
-  </WINDOW>
-  <WINDOW type="default" module="VSMSTUDIO">
-   <STATE NAME="EDIT" VALUE="AAAA/wAAAAH9AAAAAgAAAAAAAAEAAAAC0/wCAAAAAvsAAAAQAFAAcgBvAGoAZQBjAHQAcwEAAAAAAAAC0wAAASwA////+wAAABQAUAByAG8AcABlAHIAdABpAGUAcwAAAAAA/////wAAAHEA////AAAAAwAAB3gAAAB8/AEAAAAB/AAAAAAAAAd4AAAAWwD////6AAAAAAEAAAAC+wAAACAATwB1AHQAcAB1AHQARABvAGMAawBXAGkAZABnAGUAdAEAAAAA/////wAAAFsA////+wAAACIAQgByAGUAYQBrAHAAbwBpAG4AdABzAFcAaQBuAGQAbwB3AAAAAAD/////AAAAWwD///8AAAZzAAAC0wAAAAEAAAACAAAACAAAAAL8AAAAAA=="/>
-   <PROJECT ACTIVE="TRUE" NAME="80C51_1" CONFIGURATION="Debug">
-    <PROGRAMMER NAME="" INTERFACE=""/>
-   </PROJECT>
-   <EDITOR>
-    <FILE LINE="0" ACTIVE="1" NAME="80C51_1/main.asm" INDEX="4"/>
-   </EDITOR>
-  </WINDOW>
- </FRAME>
- <MODULE name="ARES">
-  <editor metric="0" gridmajor="0" mode="00000000" zoom="10" scale="10" flipped="0" gridminor="0" gridmode="32" snapidx="3" snap="0" xcursor="0" orgmode="0" snaprange="0">
-   <world y1="-12700000" x1="-15240000" y2="12700000" x2="15240000"/>
-   <centre x="0" y="0"/>
-   <origin x="0" y="0"/>
-  </editor>
- </MODULE>
+ORG 0000H;
+	SETB P3.1
+	LJMP MAIN;
+	TIMER0:
+	                  CLR TF0;
+					  CLR TR0;
+					  MOV TMOD,#01H; Timer 0 as 16 bit timer
+					  MOV TH0,R2;
+					  MOV TL0,R1;
+					  SETB TR0;
+		  LOOPTIMER0: JNB TF0,LOOPTIMER0;	 	  
+		              CLR TF0;
+					  CLR TR0;
+					  RET
+    /*DELAY: 
+	                  MOV R3,#50;
+		  HERE2:      MOV R4,#255;
+		  HERE:       DJNZ R4,HERE;
+		              DJNZ R3,HERE2;
+					  RET*/
+    TIMER0DELAY:
+	                  MOV R2,#02EH;
+					  MOV R1,#00H;
+					  ACALL TIMER0;
+					  RET;
+	DELAY_ONE_SECOND:
+	                  MOV A,#14;
+	        SEC_LOOP:  
+                      MOV R2,00H;
+					  MOV R1,00H;
+                      ACALL TIMER0;
+                      DEC A;
+                      JNZ SEC_LOOP;
+                      RET;					  
+//LCD Code STARTs
+//LCD Write 
+//If you write RW=0
+//You can write either command or data 
+//If you write comma RS = 0 If data RS = 1
+//E= P1.2 RS = P1.0 RW = P1.1					  
+	LCD_CMD:
+	                  ACALL READY;
+	                  MOV P0,A;
+					  CLR P1.0;
+					  CLR P1.1;
+					  SETB P1.2;
+					  ACALL TIMER0DELAY;
+					  CLR P1.2;
+					  RET;
+	LCD_DATA:
+	                  ACALL READY;
+	                  MOV P0,A;
+					  SETB P1.0;
+					  CLR  P1.1;
+					  SETB P1.2;
+					  ACALL TIMER0DELAY;
+					  CLR P1.2;
+					  RET;
+	READY:
+	                  SETB P0.7;
+					  CLR P1.0;Select the command register
+					  SETB P1.1;Set for read
+			   BACK:  CLR P1.2; Make enable low . You don't know state of enable before so be deterministic
+                      ACALL TIMER0DELAY;
+                      SETB P1.2; Make enable high.And now since enable is high read P0.7!!!!!
+                      JB P0.7,BACK;
+                      RET;					  
+	LCD_INITIALISE:             
+	                  MOV A,#38H; 2 lines and 5x7 Matrix
+					  ACALL LCD_CMD;
+					  MOV A,#0EH; Display on Cursor Blinking
+					  ACALL LCD_CMD;
+					  MOV A,#01H; Clear Display Screen
+					  ACALL LCD_CMD;
+					  RET;
+    DIVIDE_BY_B:	
+	       ;R4 upper 8 bits
+		   ;R3 lower 8 bits
+		   ;R5 store quotient
+		   MOV R5,#00H;
+				SUBSTRACT: 
+				                       MOV A,R4;
+									   JZ REMAINDER; Check if R4 is zero then jump to remainder section
+                                       MOV A,R3;
+									   CLR PSW.7;Clearing the CY Flag
+									   SUBB A,B;
+									   JC CARRY;
+				NOTCARRY:              
+                                       INC R5;
+                                       MOV R3,A;
+                                       JMP SUBSTRACT;
+				CARRY:									   
+				                       INC R5;
+                                       DEC R4;
+                                       MOV R3,A;
+                                       MOV A,R4;
+                                       JNZ SUBSTRACT;
+				REMAINDER:			   MOV A,R3;
+                                       JZ SUBSTRACT_END;Check if R3 is zero although this is possible only when R4=0 at very first and R3 is also zero 
+									                   ; Giving net result zero(R5=0 since R4=0 and R3=0)
+				REMAINDER_LOOP:        CLR PSW.7;
+                                       SUBB A,B;
+									   INC R5;
+									   JNC REMAINDER_LOOP;
+                                       									   
+                SUBSTRACT_END:
+		                               RET;
+	PRINT_NUM:	
+              MOV B,#100;
+              DIV AB;
+              ADD A,#48;
+              ACALL LCD_DATA;
+              MOV A,B;
+              MOV B,#10;
+              DIV AB;
+              ADD A,#48;
+              ACALL LCD_DATA;
+              MOV A,B;
+              ADD A,#48;
+              ACALL LCD_DATA;
+              RET;	
+	PRINT_STRING:
+	          MOV B,#00H;
+			  MOV A,B;
+		 PRINT_STRING_LOOP:
+		              MOVC A,@A+DPTR;
+					  ACALL LCD_DATA;
+					  INC B;
+					  MOV A,B;
+					  JNZ PRINT_STRING_LOOP;
+		RET;
+	TRIGGER:
+	                  MOV TMOD,#11H;
+	                  CLR TF0;
+					  CLR TF1;
+					  MOV TH0,#0FFH;
+					  MOV TL0,#0E0H; delay for 10 microseconds
+					  MOV TH1,#00H;
+					  MOV TL1,#00H;initialise timer 1
+					  SETB P3.0;
+					  SETB TR0;
+	TRIGGER_WAIT:
+	                  JNB TF0,TRIGGER_WAIT;
+					  CLR P3.0;
+			          //SETB TR1;
+					  ;Set P3.1 as input pin by setting it as 1
+					  /*MOV A,#122;
+					  ACALL PRINT_NUM;*/
+	ECHO_WAIT_TILL_HIGH:		
+						  JNB P3.1,ECHO_WAIT_TILL_HIGH;
+						  SETB TR1;
+						  
+	ECHO_WAIT_TILL_LOW:	
+                          JB P3.1,ECHO_WAIT_TILL_LOW;
+                          CLR TR1;						  
+						  MOV R4,TH1;
+						  MOV R3,TL1;					  
+						  RET;
+	MAIN:
+	                ACALL LCD_INITIALISE;
+//-----------------------------------------------------------------------------------------------
+                   //Checking Division Function
+					/*MOV R4,#2;
+					MOV R3,#00;
+					MOV B,#10;
+					ACALL DIVIDE_BY_B;
+					MOV A,R5;*/
+//-----------------------------------------------------------------------------------------------
+                    //Checking PRINT_STRING_LOOP
+                    /*MOV DPTR,#400H;
+					MOV B,19;
+					ACALL PRINT_CHAR;*/
+//------------------------------------------------------------------------------------------------
+					ACALL TRIGGER;
+					MOV B,#58;
+					ACALL DIVIDE_BY_B;
+					/*MOV DPTR,#400H;
+					MOV B,10;
+					ACALL PRINT_STRING;*/
+					MOV A,R5;
+					ACALL PRINT_NUM;
+					ACALL DELAY_ONE_SECOND;
+					SJMP MAIN;
+/*ORG 400H;
+	DB "DISTANCE: ";	*/	
+/*ORG 500H;
+DB   "ADARSH PRIYARANJAN";
+DB   "SONALI PRADHAN";
+DB   "AMARDEEP KASAUDHAN";	*/
+END;
  <MODULE name="ISIS">
   <editor metric="0" gridmajor="2540000" mode="00000000" zoom="0" scale="118" flipped="0" gridminor="254000" gridmode="32" snapidx="2" snap="254000" xcursor="0" orgmode="0" snaprange="127000">
    <world y1="-8890000" x1="-12700000" y2="8890000" x2="12700000"/>
